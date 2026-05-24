@@ -2,8 +2,7 @@ require("dotenv").config();
 const cron = require("node-cron");
 const { runCycle } = require("./src/agent");
 
-// Validate env vars on startup
-const required = ["ANTHROPIC_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_ACCESS_TOKEN"];
+const required = ["GEMINI_API_KEY", "FACEBOOK_PAGE_ID", "FACEBOOK_ACCESS_TOKEN"];
 for (const key of required) {
   if (!process.env[key]) {
     console.error(`❌ Missing required environment variable: ${key}`);
@@ -12,13 +11,13 @@ for (const key of required) {
 }
 
 console.log("⚽ Soccer Bot starting up...");
-console.log("🕐 Schedule: Every 6 hours (12am, 6am, 12pm, 6pm)");
+console.log("🕐 Schedule: Every 1 hour");
 console.log("📄 Page ID:", process.env.FACEBOOK_PAGE_ID);
 
 // Run immediately on startup
 runCycle();
 
-// Then run every 6 hours: midnight, 6am, 12pm, 6pm
+// Then every hour
 cron.schedule("0 * * * *", () => {
   runCycle();
 });
