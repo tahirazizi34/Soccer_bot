@@ -26,8 +26,10 @@ Do NOT include markdown, code fences, or any other text — pure JSON only.`,
   const textBlock = response.content.find((b) => b.type === "text");
   if (!textBlock) throw new Error("No text response from Claude");
 
-  const clean = textBlock.text.replace(/```json|```/g, "").trim();
-  const parsed = JSON.parse(clean);
+const text = textBlock.text;
+const jsonMatch = text.match(/\{[\s\S]*\}/);
+if (!jsonMatch) throw new Error("No JSON found in response");
+const parsed = JSON.parse(jsonMatch[0]);
   return parsed;
 }
 
