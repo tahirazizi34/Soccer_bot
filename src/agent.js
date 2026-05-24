@@ -6,7 +6,7 @@ async function fetchSoccerNewsAndGeneratePost() {
   console.log("🔍 Searching for latest soccer news...");
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-sonnet-4-5",
     max_tokens: 1000,
     tools: [{ type: "web_search_20250305", name: "web_search" }],
     system: `You are a soccer news social media manager. Your job:
