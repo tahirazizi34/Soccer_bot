@@ -19,7 +19,7 @@ console.log("📄 Page ID:", process.env.FACEBOOK_PAGE_ID);
 runCycle();
 
 // Then run every 6 hours: midnight, 6am, 12pm, 6pm
-cron.schedule("0 0,6,12,18 * * *", () => {
+cron.schedule("0 * * * *", () => {
   runCycle();
 });
 
