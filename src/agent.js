@@ -6,7 +6,7 @@ async function fetchSoccerNewsAndGeneratePost() {
   console.log("🔍 Searching for latest soccer news with Gemini...");
 
   const model = genai.getGenerativeModel({
-   model: "gemini-2.0-flash",
+  model: "gemini-2.5-flash",
     tools: [{ googleSearch: {} }],
   });
 
