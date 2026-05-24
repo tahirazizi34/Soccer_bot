@@ -1,18 +1,62 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const fs = require("fs");
+const path = require("path");
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-async function fetchSoccerNewsAndGeneratePost() {
+const HISTORY_FILE = path.join(__dirname, "posted_headlines.json");
+const MAX_HISTORY = 48; // keep last 48 headlines (2 days worth)
+
+function loadHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
+    }
+  } catch (e) {}
+  return [];
+}
+
+function saveHistory(history) {
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
+  } catch (e) {
+    console.log("⚠️  Could not save history:", e.message);
+  }
+}
+
+function normalizeHeadline(h) {
+  return h.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+}
+
+function isTooSimilar(newHeadline, history) {
+  const normalized = normalizeHeadline(newHeadline);
+  const newWords = new Set(normalized.split(" ").filter(w => w.length > 4));
+
+  for (const old of history) {
+    const oldNorm = normalizeHeadline(old);
+    const oldWords = new Set(oldNorm.split(" ").filter(w => w.length > 4));
+    const shared = [...newWords].filter(w => oldWords.has(w));
+    const similarity = shared.length / Math.max(newWords.size, 1);
+    if (similarity > 0.6) return true;
+  }
+  return false;
+}
+
+async function fetchSoccerNewsAndGeneratePost(recentHeadlines) {
   console.log("🔍 Searching for latest soccer news with Gemini...");
 
   const model = genai.getGenerativeModel({
-  model: "gemini-2.5-flash",
+    model: "gemini-2.5-flash",
     tools: [{ googleSearch: {} }],
   });
 
-  const prompt = `Search for the LATEST breaking soccer/football news right now (${new Date().toUTCString()}).
+  const avoidSection = recentHeadlines.length > 0
+    ? `\n\nIMPORTANT: Do NOT cover any of these recently posted stories:\n${recentHeadlines.slice(0, 10).map((h, i) => `${i + 1}. ${h}`).join("\n")}\nPick a DIFFERENT story that hasn't been covered yet.`
+    : "";
 
-Find the most interesting story and return ONLY a JSON object with these three fields:
+  const prompt = `Search for the LATEST breaking soccer/football news right now (${new Date().toUTCString()}).${avoidSection}
+
+Find the most interesting story that is NEW and UNIQUE and return ONLY a JSON object with these three fields:
 {
   "headline": "short headline of the news",
   "post": "an engaging 2-4 sentence Facebook post with relevant emojis and hashtags like #Soccer #Football plus team/player tags",
@@ -134,8 +178,18 @@ async function runCycle() {
   console.log("========================================");
 
   try {
-    const { headline, post, imageQuery } = await fetchSoccerNewsAndGeneratePost();
+    const history = loadHistory();
+    console.log(`📋 Recent headlines in memory: ${history.length}`);
+
+    const { headline, post, imageQuery } = await fetchSoccerNewsAndGeneratePost(history);
     console.log(`📰 Story: ${headline}`);
+
+    // Check similarity before posting
+    if (isTooSimilar(headline, history)) {
+      console.log("⚠️  Too similar to a recent post — skipping this cycle.");
+      return;
+    }
+
     console.log(`✍️  Post: ${post}`);
     console.log(`🔎 Image query: ${imageQuery}`);
 
@@ -144,6 +198,12 @@ async function runCycle() {
 
     const result = await postToFacebookWithImage(post, imageUrl);
     console.log(`✅ Posted successfully! Post ID: ${result.id}`);
+
+    // Save headline to history
+    const updated = [headline, ...history].slice(0, MAX_HISTORY);
+    saveHistory(updated);
+    console.log(`💾 Headline saved to history (${updated.length} total)`);
+
   } catch (err) {
     console.error(`❌ Error: ${err.message}`);
   }
