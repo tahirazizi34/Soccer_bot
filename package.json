@@ -4,8 +4,7 @@
   "description": "AI-powered soccer news Facebook posting bot",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
