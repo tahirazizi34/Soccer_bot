@@ -5,7 +5,7 @@ const path = require("path");
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const HISTORY_FILE = path.join(__dirname, "posted_headlines.json");
-const MAX_HISTORY = 48; // keep last 48 headlines (2 days worth)
+const MAX_HISTORY = 48;
 
 function loadHistory() {
   try {
@@ -31,7 +31,6 @@ function normalizeHeadline(h) {
 function isTooSimilar(newHeadline, history) {
   const normalized = normalizeHeadline(newHeadline);
   const newWords = new Set(normalized.split(" ").filter(w => w.length > 4));
-
   for (const old of history) {
     const oldNorm = normalizeHeadline(old);
     const oldWords = new Set(oldNorm.split(" ").filter(w => w.length > 4));
@@ -51,7 +50,7 @@ async function fetchSoccerNewsAndGeneratePost(recentHeadlines) {
   });
 
   const avoidSection = recentHeadlines.length > 0
-    ? `\n\nIMPORTANT: Do NOT cover any of these recently posted stories:\n${recentHeadlines.slice(0, 10).map((h, i) => `${i + 1}. ${h}`).join("\n")}\nPick a DIFFERENT story that hasn't been covered yet.`
+    ? `\n\nIMPORTANT: Do NOT cover any of these recently posted stories:\n${recentHeadlines.slice(0, 10).map((h, i) => `${i + 1}. ${h}`).join("\n")}\nPick a DIFFERENT story that has not been covered yet.`
     : "";
 
   const prompt = `Search for the LATEST breaking soccer/football news right now (${new Date().toUTCString()}).${avoidSection}
@@ -63,16 +62,15 @@ Find the most interesting story that is NEW and UNIQUE and return ONLY a JSON ob
   "imageQuery": "2-4 word Unsplash search query matching the story"
 }
 
-The post must feel natural and engaging — not robotic.
-Return pure JSON only — no markdown, no code fences, no extra text.`;
+The post must feel natural and engaging, not robotic.
+Return pure JSON only, no markdown, no code fences, no extra text.`;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text();
 
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("No JSON found in Gemini response");
-  const parsed = JSON.parse(jsonMatch[0]);
-  return parsed;
+  return JSON.parse(jsonMatch[0]);
 }
 
 async function fetchUnsplashImage(query) {
@@ -100,51 +98,69 @@ async function fetchUnsplashImage(query) {
   return random.urls.regular;
 }
 
+async function downloadImageAsBuffer(imageUrl) {
+  console.log("⬇️  Downloading image bytes...");
+  const res = await fetch(imageUrl, {
+    headers: { "Referer": "https://unsplash.com" }
+  });
+  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+  const buffer = await res.arrayBuffer();
+  return Buffer.from(buffer);
+}
+
 async function postToFacebookWithImage(message, imageUrl) {
   const pageId = process.env.FACEBOOK_PAGE_ID;
   const accessToken = process.env.FACEBOOK_ACCESS_TOKEN;
 
   if (imageUrl) {
-    console.log("📸 Uploading image to Facebook...");
+    try {
+      console.log("📸 Uploading image to Facebook...");
 
-    const photoRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: imageUrl,
-        published: false,
-        access_token: accessToken,
-      }),
-    });
+      const imageBuffer = await downloadImageAsBuffer(imageUrl);
 
-    const photoData = await photoRes.json();
+      const formData = new FormData();
+      formData.append("access_token", accessToken);
+      formData.append("published", "false");
+      formData.append("source", new Blob([imageBuffer], { type: "image/jpeg" }), "photo.jpg");
 
-    if (!photoRes.ok || photoData.error) {
-      const err = photoData?.error;
-      console.log(`⚠️  Image upload failed [Code ${err?.code}]: ${err?.message || JSON.stringify(photoData)} — posting without image...`);
+      const photoRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const photoData = await photoRes.json();
+
+      if (!photoRes.ok || photoData.error) {
+        const err = photoData?.error;
+        console.log(`⚠️  Image upload failed [Code ${err?.code}]: ${err?.message || JSON.stringify(photoData)} — posting without image...`);
+        return postToFacebook(message);
+      }
+
+      console.log(`✅ Image uploaded: ${photoData.id}`);
+
+      const postRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message,
+          attached_media: [{ media_fbid: photoData.id }],
+          access_token: accessToken,
+        }),
+      });
+
+      const postData = await postRes.json();
+
+      if (!postRes.ok || postData.error) {
+        const err = postData?.error;
+        throw new Error(`Facebook API Error [Code ${err?.code}]: ${err?.message}`);
+      }
+
+      return postData;
+
+    } catch (imgErr) {
+      console.log(`⚠️  Image processing failed: ${imgErr.message} — posting without image...`);
       return postToFacebook(message);
     }
-
-    console.log(`✅ Image uploaded: ${photoData.id}`);
-
-    const postRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        message,
-        attached_media: [{ media_fbid: photoData.id }],
-        access_token: accessToken,
-      }),
-    });
-
-    const postData = await postRes.json();
-
-    if (!postRes.ok || postData.error) {
-      const err = postData?.error;
-      throw new Error(`Facebook API Error [Code ${err?.code}]: ${err?.message}`);
-    }
-
-    return postData;
   }
 
   return postToFacebook(message);
@@ -185,7 +201,6 @@ async function runCycle() {
     const { headline, post, imageQuery } = await fetchSoccerNewsAndGeneratePost(history);
     console.log(`📰 Story: ${headline}`);
 
-    // Check similarity before posting
     if (isTooSimilar(headline, history)) {
       console.log("⚠️  Too similar to a recent post — skipping this cycle.");
       return;
@@ -200,7 +215,6 @@ async function runCycle() {
     const result = await postToFacebookWithImage(post, imageUrl);
     console.log(`✅ Posted successfully! Post ID: ${result.id}`);
 
-    // Save headline to history
     const updated = [headline, ...history].slice(0, MAX_HISTORY);
     saveHistory(updated);
     console.log(`💾 Headline saved to history (${updated.length} total)`);
