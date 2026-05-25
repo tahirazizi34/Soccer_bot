@@ -53,12 +53,28 @@ async function fetchSoccerNewsAndGeneratePost(recentHeadlines) {
     ? `\n\nIMPORTANT: Do NOT cover any of these recently posted stories:\n${recentHeadlines.slice(0, 10).map((h, i) => `${i + 1}. ${h}`).join("\n")}\nPick a DIFFERENT story that has not been covered yet.`
     : "";
 
+  const LEAGUES = [
+    "UEFA Champions League (UCL)",
+    "English Premier League (EPL)",
+    "La Liga (Spain)",
+    "Serie A (Italy)",
+    "Bundesliga (Germany)",
+    "Ligue 1 (France)",
+    "UEFA Europa League (UEL)",
+    "Saudi Pro League",
+    "MLS (Major League Soccer)",
+    "FIFA World Cup"
+  ].join(", ");
+
   const prompt = `Search for the LATEST breaking soccer/football news right now (${new Date().toUTCString()}).${avoidSection}
 
-Find the most interesting story that is NEW and UNIQUE and return ONLY a JSON object with these three fields:
+IMPORTANT: ONLY cover stories from these leagues and competitions: ${LEAGUES}.
+Do NOT cover stories from any other leagues or competitions.
+
+Find the most interesting and recent story from those leagues that is NEW and UNIQUE, then return ONLY a JSON object with these three fields:
 {
   "headline": "short headline of the news",
-  "post": "an engaging 2-4 sentence Facebook post with relevant emojis and hashtags like #Soccer #Football plus team/player tags",
+  "post": "an engaging 2-4 sentence Facebook post with relevant emojis and hashtags like #Soccer #Football #UCL #EPL #LaLiga #SerieA #Bundesliga #Ligue1 #UEL #SaudiProLeague #MLS #WorldCup plus relevant team/player tags",
   "imageQuery": "2-4 word Unsplash search query matching the story"
 }
 
