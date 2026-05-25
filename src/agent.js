@@ -120,7 +120,8 @@ async function postToFacebookWithImage(message, imageUrl) {
     const photoData = await photoRes.json();
 
     if (!photoRes.ok || photoData.error) {
-      console.log("⚠️  Image upload failed, posting without image...");
+      const err = photoData?.error;
+      console.log(`⚠️  Image upload failed [Code ${err?.code}]: ${err?.message || JSON.stringify(photoData)} — posting without image...`);
       return postToFacebook(message);
     }
 
